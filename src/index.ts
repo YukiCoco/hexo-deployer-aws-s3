@@ -16,6 +16,7 @@ interface HexoDeployment {
     readonly bucket: string,
     readonly glob: fg.Options,
     readonly test: string,
+    readonly endpoint: string | undefined,
 }
 
 interface HexoDeployer {
@@ -43,12 +44,12 @@ hexo.extend.deployer.register(
         const {log, public_dir: publicDir} = this;
         const globPattern = path.join(publicDir, '**/*');
         const files = await fg(globPattern, {...deploy.glob, onlyFiles: true});
-        const clientConfig = {region: deploy.region};
+        const clientConfig = deploy.endpoint === undefined ? {region: deploy.region} : {region: deploy.region, endpoint: deploy.endpoint};
         const s3 = deploy.test ? new S3Mock(deploy.test, clientConfig) : new AWSS3(clientConfig);
+        const logInfo = (Key: string, ContentType: string) => log.info(`Uploaded ${Key} [${ContentType}]`);
         log.info(`Found ${files.length} files`);
         const results = await Promise.all(files.map(async (filepath) => {
             const Key = path.toUnix(path.join(deploy.prefix || '', path.relative(publicDir, filepath)));
-            // eslint-disable-next-line import/namespace
             const ContentType = mime.getType(filepath) || undefined;
             await s3.putObject({
                 Bucket: deploy.bucket,
@@ -57,7 +58,7 @@ hexo.extend.deployer.register(
                 ContentType,
                 ACL: 'public-read',
             });
-            log.info(`Uploaded ${Key} [${ContentType}]`);
+            logInfo(Key, ContentType);
         }));
         log.info(`Uploaded ${results.length} files`);
     },
